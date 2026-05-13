@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VODItem, useIPTV } from "@/context/IPTVContext";
+import { VODItem, WatchHistoryItem, useIPTV } from "@/context/IPTVContext";
 import { useColors } from "@/hooks/useColors";
 
 const SPECIAL_CATS = ["All shows", "My list", "History"];
@@ -210,12 +210,14 @@ function StalkerSeasonRow({
 function StalkerSeriesDetail({
   item,
   isFav,
+  watchHistory,
   onPlayEpisode,
   onToggleFav,
   onBack,
 }: {
   item: VODItem;
   isFav: boolean;
+  watchHistory: WatchHistoryItem[];
   onPlayEpisode: (url: string, name: string) => void;
   onToggleFav: () => void;
   onBack?: () => void;
@@ -227,6 +229,13 @@ function StalkerSeriesDetail({
   const [loadingSeasons, setLoadingSeasons] = useState(false);
 
   const seriesId = item.id;
+
+  const lastWatched = useMemo(() => {
+    const entries = watchHistory
+      .filter((h) => h.channelId === seriesId && h.type === "show")
+      .sort((a, b) => b.watchedAt - a.watchedAt);
+    return entries[0] ?? null;
+  }, [watchHistory, seriesId]);
 
   const fetchSeasons = useCallback(async () => {
     if (!activePlaylist?.serverAddress || !activePlaylist?.macAddress) return;
@@ -376,6 +385,21 @@ function StalkerSeriesDetail({
                   {hasSeasonsData ? "Regarder S1 E1" : "Regarder"}
                 </Text>
               </TouchableOpacity>
+              {lastWatched && (
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onPlayEpisode(lastWatched.channelUrl, lastWatched.channelName);
+                  }}
+                  style={[styles.resumeBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}18` }]}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="rotate-ccw" size={14} color={colors.primary} />
+                  <Text style={[styles.resumeBtnText, { color: colors.primary }]} numberOfLines={1}>
+                    Continuer : {lastWatched.channelName.replace(item.name, "").trim() || lastWatched.channelName}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={() => { Haptics.selectionAsync(); }}
                 style={[styles.favBtn, { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.4)" }]}
@@ -468,12 +492,14 @@ function StalkerSeriesDetail({
 function M3USeriesDetail({
   series,
   isFav,
+  watchHistory,
   onPlayEp,
   onToggleFav,
   onBack,
 }: {
   series: SeriesGroup;
   isFav: boolean;
+  watchHistory: WatchHistoryItem[];
   onPlayEp: (ep: VODItem) => void;
   onToggleFav: () => void;
   onBack?: () => void;
@@ -482,6 +508,18 @@ function M3USeriesDetail({
   const seasonMap = useMemo(() => groupEpisodesBySeasons(series.episodes), [series]);
   const seasons = Object.keys(seasonMap).map(Number).sort((a, b) => a - b);
   const firstEp = seasonMap[seasons[0] ?? 1]?.[0];
+
+  const episodeIdSet = useMemo(
+    () => new Set(series.episodes.map((e) => e.id)),
+    [series.episodes]
+  );
+  const lastWatchedEp = useMemo(() => {
+    const entry = watchHistory
+      .filter((h) => h.type === "show" && episodeIdSet.has(h.channelId))
+      .sort((a, b) => b.watchedAt - a.watchedAt)[0];
+    if (!entry) return null;
+    return series.episodes.find((e) => e.id === entry.channelId) ?? null;
+  }, [watchHistory, episodeIdSet, series.episodes]);
 
   return (
     <View style={styles.detailRoot}>
@@ -537,6 +575,21 @@ function M3USeriesDetail({
               <Feather name="play" size={15} color={colors.background} />
               <Text style={[styles.playBtnText, { color: colors.background }]}>Regarder S1 E1</Text>
             </TouchableOpacity>
+            {lastWatchedEp && (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onPlayEp(lastWatchedEp);
+                }}
+                style={[styles.resumeBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}18` }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="rotate-ccw" size={14} color={colors.primary} />
+                <Text style={[styles.resumeBtnText, { color: colors.primary }]} numberOfLines={1}>
+                  Continuer : {lastWatchedEp.name.replace(series.name, "").trim() || lastWatchedEp.name}
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => { Haptics.selectionAsync(); }}
               style={[styles.favBtn, { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.4)" }]}
@@ -745,6 +798,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
           <StalkerSeriesDetail
             item={currentStalkerItem}
             isFav={favorites.includes(currentStalkerItem.id)}
+            watchHistory={watchHistory}
             onBack={() => setFullScreenShow(false)}
             onPlayEpisode={(url, epName) => {
               addToWatchHistory({
@@ -768,6 +822,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
           <M3USeriesDetail
             series={currentSeries}
             isFav={currentSeries.episodes[0] ? favorites.includes(currentSeries.episodes[0].id) : false}
+            watchHistory={watchHistory}
             onBack={() => setFullScreenShow(false)}
             onPlayEp={(ep) => {
               addToWatchHistory({
@@ -1198,6 +1253,21 @@ const styles = StyleSheet.create({
   favBtnText: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
+  },
+  resumeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    maxWidth: 200,
+  },
+  resumeBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    flexShrink: 1,
   },
   // ── metadata section ──
   metaScroll: {
