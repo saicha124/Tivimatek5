@@ -6,6 +6,7 @@ import React, { useRef, useMemo, useState, useEffect, useCallback } from "react"
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,7 +24,7 @@ import { useColors } from "@/hooks/useColors";
 const SPECIAL_CATS = ["All shows", "My list", "History"];
 
 interface ShowsViewProps {
-  onPlayVOD: (url: string, name: string) => void;
+  onPlayVOD: (url: string, name: string, nextUrl?: string, nextName?: string) => void;
 }
 
 // ─── M3U grouping helpers (used for non-Stalker playlists) ────────────────────
@@ -95,7 +96,7 @@ function StalkerSeasonRow({
   fallbackLogo?: string;
   activePlaylist: any;
   colors: ReturnType<typeof useColors>;
-  onPlayEpisode: (url: string, name: string) => void;
+  onPlayEpisode: (url: string, name: string, nextUrl?: string, nextName?: string) => void;
   seriesName: string;
 }) {
   const [episodes, setEpisodes] = useState<StalkerEpisode[]>([]);
@@ -176,7 +177,14 @@ function StalkerSeasonRow({
               key={ep.id}
               onPress={() => {
                 Haptics.selectionAsync();
-                onPlayEpisode(`stalker-episode:${seriesId}:${ep.episodeNum}`, `${seriesName} E${ep.episodeNum}`);
+                const epIdx = episodes.indexOf(ep);
+                const nextEp = episodes[epIdx + 1];
+                onPlayEpisode(
+                  `stalker-episode:${seriesId}:${ep.episodeNum}`,
+                  `${seriesName} E${ep.episodeNum}`,
+                  nextEp ? `stalker-episode:${seriesId}:${nextEp.episodeNum}` : undefined,
+                  nextEp ? `${seriesName} E${nextEp.episodeNum}` : undefined,
+                );
               }}
               style={styles.epCard}
               activeOpacity={0.8}
@@ -218,7 +226,7 @@ function StalkerSeriesDetail({
   item: VODItem;
   isFav: boolean;
   watchHistory: WatchHistoryItem[];
-  onPlayEpisode: (url: string, name: string) => void;
+  onPlayEpisode: (url: string, name: string, nextUrl?: string, nextName?: string) => void;
   onToggleFav: () => void;
   onBack?: () => void;
 }) {
@@ -409,7 +417,11 @@ function StalkerSeriesDetail({
                 <Text style={[styles.favBtnText, { color: "rgba(255,255,255,0.85)" }]}>Lecteur ext.</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { Haptics.selectionAsync(); }}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  const q = encodeURIComponent(`${item.name}${item.year ? " " + item.year.slice(0, 4) : ""} bande annonce trailer`);
+                  Linking.openURL(`https://www.youtube.com/results?search_query=${q}`);
+                }}
                 style={[styles.favBtn, { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.4)" }]}
                 activeOpacity={0.8}
               >
@@ -599,7 +611,11 @@ function M3USeriesDetail({
               <Text style={[styles.favBtnText, { color: "rgba(255,255,255,0.85)" }]}>Lecteur ext.</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => { Haptics.selectionAsync(); }}
+              onPress={() => {
+                Haptics.selectionAsync();
+                const q = encodeURIComponent(`${series.name} bande annonce trailer`);
+                Linking.openURL(`https://www.youtube.com/results?search_query=${q}`);
+              }}
               style={[styles.favBtn, { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.4)" }]}
               activeOpacity={0.8}
             >
@@ -800,7 +816,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
             isFav={favorites.includes(currentStalkerItem.id)}
             watchHistory={watchHistory}
             onBack={() => setFullScreenShow(false)}
-            onPlayEpisode={(url, epName) => {
+            onPlayEpisode={(url, epName, nextUrl, nextName) => {
               addToWatchHistory({
                 channelId: currentStalkerItem.id,
                 channelName: epName,
@@ -809,7 +825,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
                 channelUrl: url,
                 type: "show",
               });
-              onPlayVOD(url, epName);
+              onPlayVOD(url, epName, nextUrl, nextName);
             }}
             onToggleFav={() => toggleFavorite(currentStalkerItem.id)}
           />
@@ -825,6 +841,8 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
             watchHistory={watchHistory}
             onBack={() => setFullScreenShow(false)}
             onPlayEp={(ep) => {
+              const epIdx = currentSeries.episodes.findIndex((e) => e.id === ep.id);
+              const nextEp = currentSeries.episodes[epIdx + 1];
               addToWatchHistory({
                 channelId: ep.id,
                 channelName: ep.name,
@@ -833,7 +851,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
                 channelUrl: ep.url,
                 type: "show",
               });
-              onPlayVOD(ep.url, ep.name);
+              onPlayVOD(ep.url, ep.name, nextEp?.url, nextEp?.name);
             }}
             onToggleFav={() => {
               if (currentSeries.episodes[0]) toggleFavorite(currentSeries.episodes[0].id);
@@ -953,7 +971,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
               <StalkerSeriesDetail
                 item={currentStalkerItem}
                 isFav={favorites.includes(currentStalkerItem.id)}
-                onPlayEpisode={(url, epName) => {
+                onPlayEpisode={(url, epName, nextUrl, nextName) => {
                   addToWatchHistory({
                     channelId: currentStalkerItem.id,
                     channelName: epName,
@@ -962,7 +980,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
                     channelUrl: url,
                     type: "show",
                   });
-                  onPlayVOD(url, epName);
+                  onPlayVOD(url, epName, nextUrl, nextName);
                 }}
                 onToggleFav={() => toggleFavorite(currentStalkerItem.id)}
               />
@@ -1033,6 +1051,8 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
                 series={currentSeries}
                 isFav={currentSeries.episodes[0] ? favorites.includes(currentSeries.episodes[0].id) : false}
                 onPlayEp={(ep) => {
+                  const epIdx = currentSeries.episodes.findIndex((e) => e.id === ep.id);
+                  const nextEp = currentSeries.episodes[epIdx + 1];
                   addToWatchHistory({
                     channelId: ep.id,
                     channelName: ep.name,
@@ -1041,7 +1061,7 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
                     channelUrl: ep.url,
                     type: "show",
                   });
-                  onPlayVOD(ep.url, ep.name);
+                  onPlayVOD(ep.url, ep.name, nextEp?.url, nextEp?.name);
                 }}
                 onToggleFav={() => {
                   if (currentSeries.episodes[0]) toggleFavorite(currentSeries.episodes[0].id);

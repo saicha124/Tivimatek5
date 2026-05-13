@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import React, { useRef, useMemo, useState } from "react";
 import {
   FlatList,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -19,7 +20,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VODItem, useIPTV } from "@/context/IPTVContext";
+import { VODItem, WatchHistoryItem, useIPTV } from "@/context/IPTVContext";
 import { useColors } from "@/hooks/useColors";
 
 const SPECIAL_CATS = ["All movies", "My list", "History"];
@@ -244,6 +245,8 @@ function CategoryFullScreenView({
   onPlay,
   onToggleFav,
   isFav,
+  watchHistory,
+  removeFromWatchHistory,
   colors,
   topPad,
   bottomPad,
@@ -257,6 +260,8 @@ function CategoryFullScreenView({
   onPlay: (movie: VODItem) => void;
   onToggleFav: (id: string) => void;
   isFav: (id: string) => boolean;
+  watchHistory: WatchHistoryItem[];
+  removeFromWatchHistory: (channelId: string) => void;
   colors: ReturnType<typeof useColors>;
   topPad: number;
   bottomPad: number;
@@ -266,6 +271,8 @@ function CategoryFullScreenView({
   const ratingVal = m?.rating ? parseFloat(m.rating) : null;
   const hasRating = ratingVal !== null && !isNaN(ratingVal);
   const hasFav = m ? isFav(m.id) : false;
+  const histEntry = m ? watchHistory.find((h) => h.channelId === m.id) : undefined;
+  const isInHistory = !!histEntry;
 
   return (
     <View style={[fsStyles.container, { backgroundColor: "#000" }]}>
@@ -306,39 +313,73 @@ function CategoryFullScreenView({
         <View style={fsStyles.infoArea}>
           <Text style={fsStyles.infoTitle} numberOfLines={2}>{m.name}</Text>
           <View style={fsStyles.infoMeta}>
-            {hasRating && (
-              <View style={[fsStyles.ratingBadge, { backgroundColor: colors.primary }]}>
-                <Text style={fsStyles.ratingText}>{ratingVal!.toFixed(1)}</Text>
-              </View>
-            )}
             {yearStr ? <Text style={fsStyles.metaText}>{yearStr}</Text> : null}
+            {hasRating ? (
+              <>
+                {yearStr ? <Text style={fsStyles.metaText}> · </Text> : null}
+                <View style={[fsStyles.ratingBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={fsStyles.ratingText}>{ratingVal!.toFixed(1)}</Text>
+                </View>
+              </>
+            ) : null}
             {(m.genres || m.category) ? (
-              <Text style={[fsStyles.metaText, { color: colors.primary }]}>
-                · {m.genres ?? m.category}
-              </Text>
+              <Text style={fsStyles.metaText}> · {m.genres ?? m.category}</Text>
             ) : null}
           </View>
           {m.actors && m.actors !== "N/A" && (
             <Text style={fsStyles.castRow} numberOfLines={1}>
-              <Text style={fsStyles.castLabel}>Cast:  </Text>{m.actors}
+              <Text style={fsStyles.castLabel}>Acteurs :  </Text>{m.actors}
             </Text>
           )}
           {m.director && m.director !== "N/A" && (
             <Text style={fsStyles.castRow} numberOfLines={1}>
-              <Text style={fsStyles.castLabel}>Director:  </Text>{m.director}
+              <Text style={fsStyles.castLabel}>Réalisateur :  </Text>{m.director}
             </Text>
           )}
           {m.description ? (
             <Text style={fsStyles.desc} numberOfLines={4}>{m.description}</Text>
           ) : null}
-          <View style={fsStyles.actionRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: 16 }}
+            contentContainerStyle={fsStyles.actionRow}
+          >
+            {isInHistory ? (
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPlay(m); }}
+                style={[fsStyles.playBtn, { backgroundColor: "#fff" }]}
+                activeOpacity={0.85}
+              >
+                <Feather name="play" size={14} color="#000" />
+                <Text style={[fsStyles.playBtnText, { color: "#000" }]}>Reprendre</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPlay(m); }}
-              style={[fsStyles.playBtn, { backgroundColor: "#fff" }]}
+              style={[
+                fsStyles.outlineBtn,
+                !isInHistory && { backgroundColor: "#fff", borderColor: "#fff" },
+                isInHistory && { borderColor: "rgba(255,255,255,0.45)" },
+              ]}
               activeOpacity={0.85}
             >
-              <Feather name="play" size={14} color="#000" />
-              <Text style={[fsStyles.playBtnText, { color: "#000" }]}>Play</Text>
+              <Feather name="rotate-ccw" size={14} color={isInHistory ? "rgba(255,255,255,0.8)" : "#000"} />
+              <Text style={[fsStyles.outlineBtnText, { color: isInHistory ? "rgba(255,255,255,0.8)" : "#000" }]}>
+                {isInHistory ? "Regarder depuis le début" : "Regarder"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                const q = encodeURIComponent(`${m.name}${yearStr ? " " + yearStr : ""} bande annonce trailer`);
+                Linking.openURL(`https://www.youtube.com/results?search_query=${q}`);
+              }}
+              style={[fsStyles.outlineBtn, { borderColor: "rgba(255,255,255,0.45)" }]}
+              activeOpacity={0.8}
+            >
+              <Feather name="youtube" size={14} color="rgba(255,255,255,0.8)" />
+              <Text style={[fsStyles.outlineBtnText, { color: "rgba(255,255,255,0.8)" }]}>Bande annonce</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { Haptics.selectionAsync(); onToggleFav(m.id); }}
@@ -347,10 +388,22 @@ function CategoryFullScreenView({
             >
               <Feather name="bookmark" size={14} color={hasFav ? colors.primary : "rgba(255,255,255,0.8)"} />
               <Text style={[fsStyles.outlineBtnText, { color: hasFav ? colors.primary : "rgba(255,255,255,0.8)" }]}>
-                {hasFav ? "Saved" : "My List"}
+                {hasFav ? "Ma liste ✓" : "Ajouter à ma liste"}
               </Text>
             </TouchableOpacity>
-          </View>
+            {isInHistory && (
+              <TouchableOpacity
+                onPress={() => { Haptics.selectionAsync(); removeFromWatchHistory(m.id); }}
+                style={[fsStyles.outlineBtn, { borderColor: "rgba(255,80,80,0.5)" }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="trash-2" size={14} color="rgba(255,110,110,0.9)" />
+                <Text style={[fsStyles.outlineBtnText, { color: "rgba(255,110,110,0.9)" }]}>
+                  Supprimer de l'historique
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
         </View>
       )}
 
@@ -490,7 +543,8 @@ const fsStyles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 18,
+    alignItems: "center",
+    paddingRight: 16,
   },
   playBtn: {
     flexDirection: "row",
@@ -588,7 +642,7 @@ const fsStyles = StyleSheet.create({
 export function MoviesView({ onPlayVOD }: MoviesViewProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { activePlaylist, favorites, toggleFavorite, watchHistory, addToWatchHistory } = useIPTV();
+  const { activePlaylist, favorites, toggleFavorite, watchHistory, addToWatchHistory, removeFromWatchHistory } = useIPTV();
 
   const movies = activePlaylist?.movies ?? [];
 
@@ -674,6 +728,8 @@ export function MoviesView({ onPlayVOD }: MoviesViewProps) {
         }}
         onToggleFav={toggleFavorite}
         isFav={(id) => favorites.includes(id)}
+        watchHistory={watchHistory}
+        removeFromWatchHistory={removeFromWatchHistory}
         colors={colors}
         topPad={topPad}
         bottomPad={bottomPad}

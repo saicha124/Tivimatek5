@@ -200,14 +200,17 @@ export default function HomeScreen() {
           ) : currentSection === "Shows" ? (
             /* Shows / Series browser */
             <ShowsView
-              onPlayVOD={async (url, name) => {
+              onPlayVOD={async (url, name, nextUrl, nextName) => {
                 let playUrl = url;
                 if (activePlaylist?.type === "StalkerPortal" && url.startsWith("stalker-")) {
                   setResolvingStream(true);
                   try { playUrl = await resolveStalkerStreamUrl(activePlaylist, url); } catch { setResolvingStream(false); return; }
                   setResolvingStream(false);
                 }
-                router.push({ pathname: "/player", params: { url: playUrl, name } });
+                const extraParams: Record<string, string> = {};
+                if (nextUrl) extraParams.nextUrl = nextUrl;
+                if (nextName) extraParams.nextName = nextName;
+                router.push({ pathname: "/player", params: { url: playUrl, name, ...extraParams } });
               }}
             />
           ) : viewMode === "epg" && currentSection === "TV" ? (

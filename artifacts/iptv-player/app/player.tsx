@@ -436,12 +436,14 @@ const tbStyles = StyleSheet.create({
 });
 
 export default function PlayerScreen() {
-  const { url, name, catchUpStart, catchUpEnd, channelId } = useLocalSearchParams<{
+  const { url, name, catchUpStart, catchUpEnd, channelId, nextUrl, nextName } = useLocalSearchParams<{
     url: string;
     name: string;
     catchUpStart?: string;
     catchUpEnd?: string;
     channelId?: string;
+    nextUrl?: string;
+    nextName?: string;
   }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -516,6 +518,32 @@ export default function PlayerScreen() {
   const [sleepSecondsLeft, setSleepSecondsLeft] = useState<number | null>(null);
   const [sleepActiveMinutes, setSleepActiveMinutes] = useState(0);
   const [showSleepTimer, setShowSleepTimer] = useState(false);
+  const [showNextEpOverlay, setShowNextEpOverlay] = useState(false);
+  const [nextEpCountdown, setNextEpCountdown] = useState(10);
+  const nextEpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!showNextEpOverlay || !nextUrl) {
+      if (nextEpTimerRef.current) { clearInterval(nextEpTimerRef.current); nextEpTimerRef.current = null; }
+      return;
+    }
+    setNextEpCountdown(10);
+    nextEpTimerRef.current = setInterval(() => {
+      setNextEpCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(nextEpTimerRef.current!);
+          nextEpTimerRef.current = null;
+          setShowNextEpOverlay(false);
+          router.replace({ pathname: "/player", params: { url: nextUrl, name: nextName ?? "", channelId } });
+          return 10;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => {
+      if (nextEpTimerRef.current) { clearInterval(nextEpTimerRef.current); nextEpTimerRef.current = null; }
+    };
+  }, [showNextEpOverlay, nextUrl]);
 
   useEffect(() => {
     if (sleepTimerEnd === null) {
@@ -775,6 +803,9 @@ export default function PlayerScreen() {
             progressUpdateIntervalMillis={500}
             onPlaybackStatusUpdate={(s: any) => {
               setStatus(s);
+              if (s.didJustFinish && nextUrl && !showNextEpOverlay) {
+                setShowNextEpOverlay(true);
+              }
               if (s.isPlaying) {
                 hasEverPlayed.current = true;
                 if (bufferingDelayTimer.current) {
@@ -864,6 +895,50 @@ export default function PlayerScreen() {
           </Animated.View>
         )}
       </TouchableOpacity>
+
+      {/* ── Next episode countdown overlay ────────────────────────────── */}
+      {showNextEpOverlay && nextUrl && (
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(400)}
+          style={styles.nextEpOverlay}
+        >
+          <View style={styles.nextEpCard}>
+            <View style={styles.nextEpTop}>
+              <Text style={styles.nextEpLabel}>Épisode suivant</Text>
+              <TouchableOpacity
+                onPress={() => setShowNextEpOverlay(false)}
+                style={styles.nextEpDismiss}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Feather name="x" size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.nextEpName} numberOfLines={2}>{nextName ?? "Prochain épisode"}</Text>
+            <View style={styles.nextEpActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (nextEpTimerRef.current) { clearInterval(nextEpTimerRef.current); nextEpTimerRef.current = null; }
+                  setShowNextEpOverlay(false);
+                  router.replace({ pathname: "/player", params: { url: nextUrl, name: nextName ?? "", channelId } });
+                }}
+                style={styles.nextEpPlayBtn}
+                activeOpacity={0.85}
+              >
+                <Feather name="play" size={13} color="#000" />
+                <Text style={styles.nextEpPlayText}>Lancer ({nextEpCountdown}s)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowNextEpOverlay(false)}
+                style={styles.nextEpCancelBtn}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.nextEpCancelText}>Annuler</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Animated.View>
+      )}
 
       {showControls && (
         <Animated.View
@@ -1498,5 +1573,80 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  nextEpOverlay: {
+    position: "absolute",
+    bottom: 80,
+    right: 20,
+    zIndex: 99,
+  },
+  nextEpCard: {
+    backgroundColor: "rgba(10,10,10,0.92)",
+    borderRadius: 14,
+    padding: 16,
+    width: 260,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.15)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 14,
+    elevation: 14,
+  },
+  nextEpTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  nextEpLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  nextEpDismiss: {
+    padding: 2,
+  },
+  nextEpName: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
+    marginBottom: 14,
+    lineHeight: 20,
+  },
+  nextEpActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  nextEpPlayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: "center",
+  },
+  nextEpPlayText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: "#000",
+  },
+  nextEpCancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  nextEpCancelText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: "rgba(255,255,255,0.7)",
   },
 });
