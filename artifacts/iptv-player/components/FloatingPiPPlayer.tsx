@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
-import { ResizeMode, Video } from "expo-av";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { VideoView, useVideoPlayer } from "expo-video";
 import React, { useRef, useState } from "react";
 import {
   Dimensions,
@@ -34,6 +34,11 @@ export function FloatingPiPPlayer() {
   const posRef = useRef({ x: initX, y: initY });
   const [pos, setPos] = useState({ x: initX, y: initY });
   const isDragging = useRef(false);
+
+  const player = useVideoPlayer(
+    pip ? { uri: pip.url } : null,
+    (p) => { p.play(); }
+  );
 
   const panResponder = useRef(
     PanResponder.create({
@@ -94,22 +99,18 @@ export function FloatingPiPPlayer() {
       ]}
       {...panResponder.panHandlers}
     >
-      {/* Video */}
       <TouchableOpacity
         style={StyleSheet.absoluteFill}
         onPress={handleTap}
         activeOpacity={0.9}
       >
-        <Video
-          source={{ uri: pip.url }}
+        <VideoView
+          player={player}
           style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          useNativeControls={false}
-          isMuted={false}
+          contentFit="cover"
+          nativeControls={false}
         />
 
-        {/* Gradient overlay at bottom */}
         <View style={styles.bottomOverlay}>
           <View style={styles.liveRow}>
             <View style={styles.liveDot} />
@@ -120,18 +121,15 @@ export function FloatingPiPPlayer() {
           </Text>
         </View>
 
-        {/* Expand icon hint */}
         <View style={styles.expandHint}>
           <Feather name="maximize-2" size={12} color="rgba(255,255,255,0.7)" />
         </View>
       </TouchableOpacity>
 
-      {/* Drag handle top bar */}
       <View style={styles.topBar} pointerEvents="none">
         <View style={styles.dragHandle} />
       </View>
 
-      {/* Close button */}
       <TouchableOpacity
         style={[styles.closeBtn, { backgroundColor: "rgba(0,0,0,0.75)" }]}
         onPress={() => {

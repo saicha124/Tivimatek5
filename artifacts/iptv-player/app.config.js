@@ -23,6 +23,9 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
+      infoPlist: {
+        UIBackgroundModes: ["audio"],
+      },
     },
     android: {
       package: "com.iptv.player",
@@ -44,6 +47,7 @@ module.exports = {
       "expo-font",
       "expo-web-browser",
       "expo-av",
+      "expo-video",
     ],
     extra: {
       router: {

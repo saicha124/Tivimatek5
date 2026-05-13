@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
-import { ResizeMode, Video } from "expo-av";
+import { useEvent } from "expo";
 import { Image } from "expo-image";
+import { VideoView, useVideoPlayer } from "expo-video";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -448,7 +449,7 @@ export default function PlayerScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const videoRef = useRef<Video>(null);
+  const videoViewRef = useRef<VideoView>(null);
 
   const isCatchUp = !!catchUpStart;
   const catchUpStartMs = catchUpStart ? parseInt(catchUpStart, 10) : undefined;
@@ -504,7 +505,23 @@ export default function PlayerScreen() {
     return total > 0 ? Math.min(1, (epgNow - currentEpgProg.startTime) / total) : 0;
   }, [currentEpgProg, epgNow]);
 
-  const [status, setStatus] = useState<any>({});
+  const player = useVideoPlayer(
+    streamUrl ? { uri: streamUrl } : null,
+    (p) => { p.play(); }
+  );
+
+  const prevStreamUrl = useRef(streamUrl);
+  useEffect(() => {
+    if (streamUrl && streamUrl !== prevStreamUrl.current) {
+      prevStreamUrl.current = streamUrl;
+      player.replace({ uri: streamUrl });
+      player.play();
+    }
+  }, [streamUrl, player]);
+
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showBufferingOverlay, setShowBufferingOverlay] = useState(true);
@@ -513,6 +530,52 @@ export default function PlayerScreen() {
   const [showMultiview, setShowMultiview] = useState(false);
   const [showEpg, setShowEpg] = useState(false);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEvent(player, "timeUpdate", ({ currentTime }) => {
+    setPosition(currentTime * 1000);
+    const dur = player.duration;
+    if (dur && isFinite(dur) && dur > 0) {
+      setDuration(dur * 1000);
+    }
+  });
+
+  useEvent(player, "statusChange", ({ status: s }) => {
+    if (s === "readyToPlay") {
+      hasEverPlayed.current = true;
+      if (bufferingDelayTimer.current) {
+        clearTimeout(bufferingDelayTimer.current);
+        bufferingDelayTimer.current = null;
+      }
+      setShowBufferingOverlay(false);
+    } else if (s === "loading") {
+      if (!hasEverPlayed.current) {
+        setShowBufferingOverlay(true);
+      } else if (!bufferingDelayTimer.current) {
+        bufferingDelayTimer.current = setTimeout(() => {
+          bufferingDelayTimer.current = null;
+          setShowBufferingOverlay(true);
+        }, 2000);
+      }
+    }
+  });
+
+  useEvent(player, "playingChange", ({ isPlaying: p }) => {
+    setIsPlaying(p);
+    if (p) {
+      hasEverPlayed.current = true;
+      if (bufferingDelayTimer.current) {
+        clearTimeout(bufferingDelayTimer.current);
+        bufferingDelayTimer.current = null;
+      }
+      setShowBufferingOverlay(false);
+    }
+  });
+
+  useEvent(player, "playToEnd", () => {
+    if (nextUrl && !showNextEpOverlay) {
+      setShowNextEpOverlay(true);
+    }
+  });
 
   const [sleepTimerEnd, setSleepTimerEnd] = useState<number | null>(null);
   const [sleepSecondsLeft, setSleepSecondsLeft] = useState<number | null>(null);
@@ -556,7 +619,7 @@ export default function PlayerScreen() {
         setSleepTimerEnd(null);
         setSleepSecondsLeft(null);
         setSleepActiveMinutes(0);
-        videoRef.current?.pauseAsync();
+        player.pause();
         router.back();
       } else {
         setSleepSecondsLeft(remaining);
@@ -566,10 +629,6 @@ export default function PlayerScreen() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [sleepTimerEnd]);
-
-  const position: number = status?.positionMillis ?? 0;
-  const duration: number = status?.durationMillis ?? 0;
-  const isPlaying: boolean = status?.isPlaying ?? false;
 
   const hideControls = useCallback(() => {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
@@ -596,29 +655,26 @@ export default function PlayerScreen() {
     }, 2000);
   }, []);
 
-  const togglePlay = useCallback(async () => {
+  const togglePlay = useCallback(() => {
     Haptics.selectionAsync();
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      await videoRef.current.pauseAsync();
+    if (player.playing) {
+      player.pause();
     } else {
-      await videoRef.current.playAsync();
+      player.play();
     }
-  }, [isPlaying]);
+  }, [player]);
 
-  const seekBackward = useCallback(async () => {
-    if (!videoRef.current || !isCatchUp) return;
+  const seekBackward = useCallback(() => {
+    if (!isCatchUp) return;
     Haptics.selectionAsync();
-    const newPos = Math.max(0, position - 30000);
-    await videoRef.current.setPositionAsync(newPos);
-  }, [position, isCatchUp]);
+    player.seekBy(-30);
+  }, [isCatchUp, player]);
 
-  const seekForward = useCallback(async () => {
-    if (!videoRef.current || !isCatchUp) return;
+  const seekForward = useCallback(() => {
+    if (!isCatchUp) return;
     Haptics.selectionAsync();
-    const newPos = Math.min(duration || position + 30000, position + 30000);
-    await videoRef.current.setPositionAsync(newPos);
-  }, [position, duration, isCatchUp]);
+    player.seekBy(30);
+  }, [isCatchUp, player]);
 
   // ── TV Remote / Channel Navigation ──────────────────────────────────────────
 
@@ -793,58 +849,14 @@ export default function PlayerScreen() {
         activeOpacity={1}
       >
         {streamUrl ? (
-          <Video
-            ref={videoRef}
-            source={{ uri: streamUrl }}
+          <VideoView
+            ref={videoViewRef}
+            player={player}
             style={StyleSheet.absoluteFill}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
-            useNativeControls={false}
-            progressUpdateIntervalMillis={500}
-            onPlaybackStatusUpdate={(s: any) => {
-              setStatus(s);
-              if (s.didJustFinish && nextUrl && !showNextEpOverlay) {
-                setShowNextEpOverlay(true);
-              }
-              if (s.isPlaying) {
-                hasEverPlayed.current = true;
-                if (bufferingDelayTimer.current) {
-                  clearTimeout(bufferingDelayTimer.current);
-                  bufferingDelayTimer.current = null;
-                }
-                setShowBufferingOverlay(false);
-              } else if (s.isBuffering) {
-                if (!hasEverPlayed.current) {
-                  setShowBufferingOverlay(true);
-                } else if (!bufferingDelayTimer.current) {
-                  bufferingDelayTimer.current = setTimeout(() => {
-                    bufferingDelayTimer.current = null;
-                    setShowBufferingOverlay(true);
-                  }, 2000);
-                }
-              } else {
-                if (bufferingDelayTimer.current) {
-                  clearTimeout(bufferingDelayTimer.current);
-                  bufferingDelayTimer.current = null;
-                }
-                if (!s.isPlaying) setShowBufferingOverlay(false);
-              }
-            }}
-            onLoad={() => {
-              if (bufferingDelayTimer.current) {
-                clearTimeout(bufferingDelayTimer.current);
-                bufferingDelayTimer.current = null;
-              }
-              setShowBufferingOverlay(false);
-              hideControls();
-            }}
-            onReadyForDisplay={() => {
-              if (bufferingDelayTimer.current) {
-                clearTimeout(bufferingDelayTimer.current);
-                bufferingDelayTimer.current = null;
-              }
-              setShowBufferingOverlay(false);
-            }}
+            contentFit="contain"
+            allowsPictureInPicture
+            startsPictureInPictureAutomatically
+            nativeControls={false}
           />
         ) : (
           <View style={styles.noUrl}>
@@ -1098,9 +1110,9 @@ export default function PlayerScreen() {
                 <Scrubber
                   position={position}
                   duration={duration}
-                  onSeek={async (pct) => {
-                    if (videoRef.current && duration > 0) {
-                      await videoRef.current.setPositionAsync(pct * duration);
+                  onSeek={(pct) => {
+                    if (duration > 0) {
+                      player.currentTime = (pct * duration) / 1000;
                     }
                   }}
                   colors={colors}
@@ -1154,8 +1166,14 @@ export default function PlayerScreen() {
                   onPiP={() => {
                     if (!streamUrl) return;
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    startPiP(streamUrl, name ?? "Unknown", channelId);
-                    router.back();
+                    if (videoViewRef.current) {
+                      videoViewRef.current.startPictureInPicture();
+                      setShowToolbar(false);
+                      setShowControls(false);
+                    } else {
+                      startPiP(streamUrl, name ?? "Unknown", channelId);
+                      router.back();
+                    }
                   }}
                   onSleepTimer={() => {
                     setShowToolbar(false);
