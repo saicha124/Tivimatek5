@@ -2,6 +2,10 @@ const replitDomain = process.env.REPLIT_DEV_DOMAIN
   ? `https://${process.env.REPLIT_DEV_DOMAIN}`
   : "https://replit.com/";
 
+const replitExpoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN
+  ? `https://${process.env.REPLIT_EXPO_DEV_DOMAIN}`
+  : replitDomain;
+
 module.exports = {
   expo: {
     name: "IPTV Player",
@@ -44,6 +48,7 @@ module.exports = {
     extra: {
       router: {
         origin: replitDomain,
+        headOrigin: replitExpoDomain,
       },
     },
     experiments: {
