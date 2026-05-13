@@ -238,6 +238,8 @@ function PlayerToolbar({
   onPiP,
   onSleepTimer,
   onEpg,
+  onRecording,
+  isRecording,
   sleepActive,
   colors,
   bottomPad,
@@ -248,6 +250,8 @@ function PlayerToolbar({
   onPiP: () => void;
   onSleepTimer: () => void;
   onEpg: () => void;
+  onRecording: () => void;
+  isRecording: boolean;
   sleepActive: boolean;
   colors: ReturnType<typeof useColors>;
   bottomPad: number;
@@ -260,7 +264,13 @@ function PlayerToolbar({
     { icon: "search", label: "Search" },
     { icon: "list", label: "Channels list" },
     { icon: "calendar", label: "TV guide", onPress: onEpg },
-    { icon: "circle", label: "Recordings" },
+    {
+      icon: "circle",
+      label: isRecording ? "Stop REC" : "Record",
+      onPress: onRecording,
+      active: isRecording,
+      activeColor: "#e53935",
+    },
     { icon: "layout", label: "Multiview", onPress: onMultiview },
     { icon: "maximize", label: "Picture-in-picture", onPress: onPiP },
     {
@@ -271,12 +281,14 @@ function PlayerToolbar({
       activeColor: "#9C27B0",
     },
     { icon: "monitor", label: "1280 × 720" },
-    { icon: "volume-2", label: "Stereo" },
-    { icon: "clock", label: "0 ms" },
   ];
 
   const row2: ToolbarItem[] = [
-    { icon: "volume-2", label: "Stereo" },
+    {
+      icon: "volume-2",
+      label: "Audio track",
+      onPress: () => setShowChannelOptions(true),
+    },
     { icon: "clock", label: "0 ms" },
     { icon: "align-left", label: "Off" },
     { icon: "crop", label: "Normal" },
@@ -451,7 +463,7 @@ export default function PlayerScreen() {
     : url;
 
   const { startPiP } = usePiP();
-  const { activePlaylist, watchHistory, stalkerEpgData, resolveStalkerStreamUrl, addToWatchHistory, clearWatchHistory, recordingSettings } = useIPTV();
+  const { activePlaylist, watchHistory, stalkerEpgData, resolveStalkerStreamUrl, addToWatchHistory, clearWatchHistory, removeFromWatchHistory, recordingSettings } = useIPTV();
 
   const deviceRecording = useDeviceRecordingCtx();
 
@@ -491,7 +503,7 @@ export default function PlayerScreen() {
   }, [currentEpgProg, epgNow]);
 
   const [status, setStatus] = useState<any>({});
-  const [showControls, setShowControls] = useState(true);
+  const [showControls, setShowControls] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showBufferingOverlay, setShowBufferingOverlay] = useState(true);
   const hasEverPlayed = useRef(false);
@@ -536,20 +548,25 @@ export default function PlayerScreen() {
     controlsTimeout.current = setTimeout(() => {
       setShowControls(false);
       setShowToolbar(false);
-    }, 5000);
+    }, 2000);
   }, []);
 
   const handleTap = useCallback(() => {
-    setShowControls((v) => {
-      if (!v) {
-        hideControls();
-        return true;
-      }
-      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
-      return false;
-    });
+    setShowControls(true);
     setShowToolbar(false);
+    hideControls();
   }, [hideControls]);
+
+  const handleLongPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowControls(true);
+    setShowToolbar(true);
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    controlsTimeout.current = setTimeout(() => {
+      setShowControls(false);
+      setShowToolbar(false);
+    }, 2000);
+  }, []);
 
   const togglePlay = useCallback(async () => {
     Haptics.selectionAsync();
@@ -743,6 +760,8 @@ export default function PlayerScreen() {
       <TouchableOpacity
         style={StyleSheet.absoluteFill}
         onPress={handleTap}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
         activeOpacity={1}
       >
         {streamUrl ? (
@@ -1033,6 +1052,7 @@ export default function PlayerScreen() {
                   });
                 }}
                 onClearHistory={clearWatchHistory}
+                onDeleteHistoryItem={(id) => removeFromWatchHistory(id)}
                 onMore={() => setShowToolbar((v) => !v)}
                 onSleepTimer={() => setShowSleepTimer(true)}
               />
@@ -1064,6 +1084,30 @@ export default function PlayerScreen() {
                     setShowControls(false);
                     setShowEpg(true);
                   }}
+                  onRecording={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    if (deviceRecording.isRecording) {
+                      const saved = await deviceRecording.stop();
+                      Alert.alert(
+                        "Recording saved",
+                        saved
+                          ? `File saved to:\n${saved}\n\n${formatBytes(deviceRecording.bytesWritten)} captured`
+                          : "Recording stopped.",
+                        [{ text: "OK" }],
+                      );
+                    } else {
+                      const started = await deviceRecording.start(
+                        streamUrl ?? "",
+                        name ?? "recording",
+                        recordingSettings.deviceRecordingsFolder ?? "",
+                      );
+                      if (!started && deviceRecording.error) {
+                        Alert.alert("Cannot record", deviceRecording.error);
+                      }
+                    }
+                    setShowToolbar(false);
+                  }}
+                  isRecording={deviceRecording.isRecording}
                   sleepActive={sleepActiveMinutes > 0}
                   colors={colors}
                   bottomPad={bottomPad}

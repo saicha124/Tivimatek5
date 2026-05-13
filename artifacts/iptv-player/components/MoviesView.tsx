@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import React, { useRef, useMemo, useState } from "react";
 import {
   FlatList,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +13,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -606,6 +609,9 @@ export function MoviesView({ onPlayVOD }: MoviesViewProps) {
     return movies.filter((m) => m.name.toLowerCase().includes(q));
   }, [query, movies]);
 
+  const { width: screenWidth } = useWindowDimensions();
+  const isNarrow = screenWidth < 700;
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -677,70 +683,117 @@ export function MoviesView({ onPlayVOD }: MoviesViewProps) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Left category sidebar */}
-      <View
-        style={[
-          styles.catSidebar,
-          { backgroundColor: colors.sidebar, borderRightColor: colors.border, paddingTop: topPad + 8 },
-        ]}
-      >
-        <Text style={[styles.catHeader, { color: colors.mutedForeground }]}>MOVIES</Text>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: bottomPad + 16 }}
+      {/* Left category sidebar — hidden on narrow screens */}
+      {!isNarrow && (
+        <View
+          style={[
+            styles.catSidebar,
+            { backgroundColor: colors.sidebar, borderRightColor: colors.border, paddingTop: topPad + 8 },
+          ]}
         >
-          {categories.map((cat) => {
-            const active = cat === selectedCat;
-            const isSpecial = SPECIAL_CATS.includes(cat);
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedCat(cat);
-                  if (!SPECIAL_CATS.includes(cat)) {
-                    const catMovies = movies.filter((mv) => mv.category === cat);
-                    setSelectedMovie(catMovies[0] ?? null);
-                    setFullScreenMode(true);
-                  } else {
-                    setSelectedMovie(null);
-                    setFullScreenMode(false);
-                  }
-                }}
-                style={[styles.catItem, active && { backgroundColor: colors.highlight }]}
-                activeOpacity={0.7}
-              >
-                {isSpecial && (
-                  <Feather
-                    name={cat === "My list" ? "bookmark" : cat === "History" ? "clock" : "grid"}
-                    size={13}
-                    color={active ? colors.primary : colors.mutedForeground}
-                    style={{ marginRight: 6 }}
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.catLabel,
-                    {
-                      color: active ? colors.foreground : colors.mutedForeground,
-                      fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
-                    },
-                  ]}
-                  numberOfLines={1}
+          <Text style={[styles.catHeader, { color: colors.mutedForeground }]}>MOVIES</Text>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: bottomPad + 16 }}
+          >
+            {categories.map((cat) => {
+              const active = cat === selectedCat;
+              const isSpecial = SPECIAL_CATS.includes(cat);
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedCat(cat);
+                    if (!SPECIAL_CATS.includes(cat)) {
+                      const catMovies = movies.filter((mv) => mv.category === cat);
+                      setSelectedMovie(catMovies[0] ?? null);
+                      setFullScreenMode(true);
+                    } else {
+                      setSelectedMovie(null);
+                      setFullScreenMode(false);
+                    }
+                  }}
+                  style={[styles.catItem, active && { backgroundColor: colors.highlight }]}
+                  activeOpacity={0.7}
                 >
-                  {cat}
-                </Text>
-                {active && (
-                  <View style={[styles.catActiveBar, { backgroundColor: colors.primary }]} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  {isSpecial && (
+                    <Feather
+                      name={cat === "My list" ? "bookmark" : cat === "History" ? "clock" : "grid"}
+                      size={13}
+                      color={active ? colors.primary : colors.mutedForeground}
+                      style={{ marginRight: 6 }}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.catLabel,
+                      {
+                        color: active ? colors.foreground : colors.mutedForeground,
+                        fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cat}
+                  </Text>
+                  {active && (
+                    <View style={[styles.catActiveBar, { backgroundColor: colors.primary }]} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Right content */}
       <View style={styles.content}>
+        {/* Horizontal category strip — shown only on narrow screens */}
+        {isNarrow && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={[styles.narrowCatStrip, { backgroundColor: colors.sidebar, borderBottomColor: colors.border }]}
+            contentContainerStyle={styles.narrowCatStripContent}
+          >
+            {categories.map((cat) => {
+              const active = cat === selectedCat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedCat(cat);
+                    if (!SPECIAL_CATS.includes(cat)) {
+                      const catMovies = movies.filter((mv) => mv.category === cat);
+                      setSelectedMovie(catMovies[0] ?? null);
+                      setFullScreenMode(true);
+                    } else {
+                      setSelectedMovie(null);
+                      setFullScreenMode(false);
+                    }
+                  }}
+                  style={[
+                    styles.narrowCatItem,
+                    active && { backgroundColor: colors.primary },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.narrowCatLabel,
+                      { color: active ? "#fff" : colors.mutedForeground },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
         {/* Rich detail pane for selected movie */}
         {selectedMovie && (
           <MovieDetailPane
@@ -1180,6 +1233,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "Inter_600SemiBold",
     color: "#fff",
+  },
+
+  // ── Narrow-screen horizontal category strip ──────────────────────────────
+  narrowCatStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    maxHeight: 44,
+    flexShrink: 0,
+  },
+  narrowCatStripContent: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+    alignItems: "center",
+  },
+  narrowCatItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  narrowCatLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
   },
 
   // ── Empty states ──────────────────────────────────────────────────────────

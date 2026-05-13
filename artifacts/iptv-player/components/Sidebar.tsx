@@ -175,7 +175,9 @@ export function Sidebar({ onSettings, onSwitchPlaylist }: SidebarProps) {
           style={styles.itemWrap}
           activeOpacity={0.7}
         >
-          <Feather name="settings" size={17} color={colors.mutedForeground} />
+          <View style={styles.iconWrap}>
+            <Feather name="settings" size={17} color={colors.mutedForeground} />
+          </View>
           <Text style={[styles.itemLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
             Settings
           </Text>

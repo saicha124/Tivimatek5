@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 
@@ -30,6 +30,7 @@ interface Props {
   onGuide: () => void;
   onSwitchChannel: (h: WatchHistoryItem) => void;
   onClearHistory: () => void;
+  onDeleteHistoryItem?: (channelId: string) => void;
   onMore: () => void;
   onSleepTimer: () => void;
 }
@@ -55,9 +56,12 @@ export function PlayerInfoBar({
   onGuide,
   onSwitchChannel,
   onClearHistory,
+  onDeleteHistoryItem,
   onMore,
   onSleepTimer,
 }: Props) {
+  const [longPressedId, setLongPressedId] = useState<string | null>(null);
+
   const progDurationMin = currentProgram
     ? Math.round((currentProgram.endTime - currentProgram.startTime) / 60000)
     : null;
@@ -216,25 +220,48 @@ export function PlayerInfoBar({
         {/* Recent channel cards from watch history */}
         {channelHistory.map((h) => {
           const isCurrent = h.channelId === currentChannelId;
+          const isLongPressed = h.channelId === longPressedId;
           return (
             <TouchableOpacity
               key={`${h.channelId}-${h.watchedAt}`}
               style={styles.actionTile}
               onPress={() => {
+                if (isLongPressed) {
+                  setLongPressedId(null);
+                  return;
+                }
                 if (!isCurrent) {
                   Haptics.selectionAsync();
                   onSwitchChannel(h);
                 }
               }}
+              onLongPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setLongPressedId(isLongPressed ? null : h.channelId);
+              }}
+              delayLongPress={400}
             >
               <View
                 style={[
                   styles.tileIcon,
                   { backgroundColor: "rgba(255,255,255,0.07)" },
                   isCurrent && { borderColor: colors.primary, borderWidth: 2 },
+                  isLongPressed && { backgroundColor: "rgba(244,67,54,0.18)", borderColor: "#f44336", borderWidth: 1.5 },
                 ]}
               >
-                {h.channelLogo ? (
+                {isLongPressed ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      setLongPressedId(null);
+                      onDeleteHistoryItem?.(h.channelId);
+                    }}
+                    style={styles.deleteOverlay}
+                  >
+                    <Feather name="trash-2" size={20} color="#f44336" />
+                    <Text style={styles.deleteLabel}>Supprimer</Text>
+                  </TouchableOpacity>
+                ) : h.channelLogo ? (
                   <Image
                     source={{ uri: h.channelLogo }}
                     style={styles.tileLogo}
@@ -244,9 +271,11 @@ export function PlayerInfoBar({
                   <Feather name="tv" size={20} color="rgba(255,255,255,0.35)" />
                 )}
               </View>
-              <Text style={styles.tileLabel} numberOfLines={2}>
-                {h.channelName}
-              </Text>
+              {!isLongPressed && (
+                <Text style={styles.tileLabel} numberOfLines={2}>
+                  {h.channelName}
+                </Text>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -259,6 +288,7 @@ export function PlayerInfoBar({
               style={styles.actionTile}
               onPress={() => {
                 Haptics.selectionAsync();
+                setLongPressedId(null);
                 onClearHistory();
               }}
             >
@@ -460,9 +490,6 @@ const styles = StyleSheet.create({
     gap: 5,
     width: 72,
   },
-  actionTileActive: {
-    opacity: 1,
-  },
   tileIcon: {
     width: 72,
     height: 52,
@@ -480,6 +507,19 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     fontSize: 10,
     fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  deleteOverlay: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 3,
+  },
+  deleteLabel: {
+    color: "#f44336",
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
     textAlign: "center",
   },
 });

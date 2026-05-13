@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -667,6 +668,9 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
   const inputRef = useRef<TextInput>(null);
   const [fullScreenShow, setFullScreenShow] = useState(false);
 
+  const { width: screenWidth } = useWindowDimensions();
+  const isNarrow = screenWidth < 700;
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -775,54 +779,95 @@ export function ShowsView({ onPlayVOD }: ShowsViewProps) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Left category sidebar */}
-      <View style={[styles.catSidebar, { backgroundColor: colors.sidebar, borderRightColor: colors.border, paddingTop: topPad + 8 }]}>
-        <Text style={[styles.catHeader, { color: colors.mutedForeground }]}>SHOWS</Text>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad + 16 }}>
-          {categories.map((cat) => {
-            const active = cat === selectedCat;
-            const isSpecial = SPECIAL_CATS.includes(cat);
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedCat(cat);
-                  setSelectedId(null);
-                  setFullScreenShow(false);
-                }}
-                style={[styles.catItem, active && { backgroundColor: colors.highlight }]}
-                activeOpacity={0.7}
-              >
-                {isSpecial && (
-                  <Feather
-                    name={cat === "My list" ? "bookmark" : cat === "History" ? "clock" : "grid"}
-                    size={13}
-                    color={active ? colors.primary : colors.mutedForeground}
-                    style={{ marginRight: 6 }}
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.catLabel,
-                    {
-                      color: active ? colors.foreground : colors.mutedForeground,
-                      fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
-                    },
-                  ]}
-                  numberOfLines={1}
+      {/* Left category sidebar — hidden on narrow screens */}
+      {!isNarrow && (
+        <View style={[styles.catSidebar, { backgroundColor: colors.sidebar, borderRightColor: colors.border, paddingTop: topPad + 8 }]}>
+          <Text style={[styles.catHeader, { color: colors.mutedForeground }]}>SHOWS</Text>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad + 16 }}>
+            {categories.map((cat) => {
+              const active = cat === selectedCat;
+              const isSpecial = SPECIAL_CATS.includes(cat);
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedCat(cat);
+                    setSelectedId(null);
+                    setFullScreenShow(false);
+                  }}
+                  style={[styles.catItem, active && { backgroundColor: colors.highlight }]}
+                  activeOpacity={0.7}
                 >
-                  {cat}
-                </Text>
-                {active && <View style={[styles.catActiveBar, { backgroundColor: colors.primary }]} />}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+                  {isSpecial && (
+                    <Feather
+                      name={cat === "My list" ? "bookmark" : cat === "History" ? "clock" : "grid"}
+                      size={13}
+                      color={active ? colors.primary : colors.mutedForeground}
+                      style={{ marginRight: 6 }}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.catLabel,
+                      {
+                        color: active ? colors.foreground : colors.mutedForeground,
+                        fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cat}
+                  </Text>
+                  {active && <View style={[styles.catActiveBar, { backgroundColor: colors.primary }]} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Right: detail + strip */}
       <View style={styles.content}>
+        {/* Horizontal category strip — shown only on narrow screens */}
+        {isNarrow && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={[styles.narrowCatStrip, { backgroundColor: colors.sidebar, borderBottomColor: colors.border }]}
+            contentContainerStyle={styles.narrowCatStripContent}
+          >
+            {categories.map((cat) => {
+              const active = cat === selectedCat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedCat(cat);
+                    setSelectedId(null);
+                    setFullScreenShow(false);
+                  }}
+                  style={[
+                    styles.narrowCatItem,
+                    active && { backgroundColor: colors.primary },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.narrowCatLabel,
+                      { color: active ? "#fff" : colors.mutedForeground },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
         {isStalker ? (
           <>
             {currentStalkerItem && (
@@ -1288,6 +1333,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  // ── Narrow-screen horizontal category strip ──────────────────────────────
+  narrowCatStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    maxHeight: 44,
+    flexShrink: 0,
+  },
+  narrowCatStripContent: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+    alignItems: "center",
+  },
+  narrowCatItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  narrowCatLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+
   // ── search bar ──
   searchBar: {
     flexDirection: "row",

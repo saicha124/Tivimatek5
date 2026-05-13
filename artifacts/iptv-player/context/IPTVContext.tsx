@@ -183,6 +183,7 @@ interface IPTVContextValue {
   watchHistory: WatchHistoryItem[];
   addToWatchHistory: (item: Omit<WatchHistoryItem, "watchedAt">) => void;
   clearWatchHistory: () => void;
+  removeFromWatchHistory: (channelId: string) => void;
   addPlaylist: (playlist: Omit<Playlist, "id" | "channels" | "movies" | "shows" | "lastUpdated">) => Promise<void>;
   removePlaylist: (id: string) => void;
   resolveStalkerStreamUrl: (playlist: Playlist, stalkerUrl: string) => Promise<string>;
@@ -708,6 +709,14 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.removeItem("watchHistory");
   }, []);
 
+  const removeFromWatchHistory = useCallback((channelId: string) => {
+    setWatchHistory((prev) => {
+      const next = prev.filter((h) => h.channelId !== channelId);
+      AsyncStorage.setItem("watchHistory", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const resolveStalkerStreamUrl = useCallback(async (playlist: Playlist, stalkerUrl: string): Promise<string> => {
     if (!playlist.serverAddress || !playlist.macAddress) {
       throw new Error("Invalid Stalker playlist configuration");
@@ -1002,6 +1011,7 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         watchHistory,
         addToWatchHistory,
         clearWatchHistory,
+        removeFromWatchHistory,
         addPlaylist,
         removePlaylist,
         resolveStalkerStreamUrl,
