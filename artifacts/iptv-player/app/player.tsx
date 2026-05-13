@@ -913,16 +913,19 @@ export default function PlayerScreen() {
               </View>
             )}
             {/* Device REC badge — shown when recording to device */}
-            {deviceRecording.isRecording && (
+            {(deviceRecording.isRecording || deviceRecording.isSaving) && (
               <TouchableOpacity
                 onPress={async () => {
+                  if (deviceRecording.isSaving) return;
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  const capturedBytes = deviceRecording.bytesWritten;
+                  const capturedMs = deviceRecording.elapsedMs;
                   const saved = await deviceRecording.stop();
                   Alert.alert(
-                    "Recording saved",
+                    saved ? "Enregistrement sauvegardé ✓" : "Enregistrement arrêté",
                     saved
-                      ? `File saved to:\n${saved}\n\n${formatBytes(deviceRecording.bytesWritten)} captured`
-                      : "Recording stopped.",
+                      ? `Sauvegardé dans la galerie\n"IPTV Recordings"\n\n${formatElapsed(capturedMs)} · ${formatBytes(capturedBytes)} capturés`
+                      : "L'enregistrement a été arrêté.",
                     [{ text: "OK" }],
                   );
                 }}
@@ -930,7 +933,9 @@ export default function PlayerScreen() {
               >
                 <View style={[styles.liveDot, { backgroundColor: "#e53935" }]} />
                 <Text style={[styles.liveText, { color: "#e53935" }]}>
-                  REC {formatElapsed(deviceRecording.elapsedMs)} · {formatBytes(deviceRecording.bytesWritten)}
+                  {deviceRecording.isSaving
+                    ? "SAVING..."
+                    : `REC ${formatElapsed(deviceRecording.elapsedMs)} · ${formatBytes(deviceRecording.bytesWritten)}`}
                 </Text>
               </TouchableOpacity>
             )}
@@ -940,12 +945,14 @@ export default function PlayerScreen() {
                 onPress={async () => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                   if (deviceRecording.isRecording) {
+                    const capturedBytes = deviceRecording.bytesWritten;
+                    const capturedMs = deviceRecording.elapsedMs;
                     const saved = await deviceRecording.stop();
                     Alert.alert(
-                      "Recording saved",
+                      saved ? "Enregistrement sauvegardé ✓" : "Enregistrement arrêté",
                       saved
-                        ? `File saved to:\n${saved}\n\n${formatBytes(deviceRecording.bytesWritten)} captured`
-                        : "Recording stopped.",
+                        ? `Sauvegardé dans la galerie\n"IPTV Recordings"\n\n${formatElapsed(capturedMs)} · ${formatBytes(capturedBytes)} capturés`
+                        : "L'enregistrement a été arrêté.",
                       [{ text: "OK" }],
                     );
                   } else {
@@ -955,7 +962,7 @@ export default function PlayerScreen() {
                       recordingSettings.deviceRecordingsFolder ?? "",
                     );
                     if (!started && deviceRecording.error) {
-                      Alert.alert("Cannot record", deviceRecording.error);
+                      Alert.alert("Impossible d'enregistrer", deviceRecording.error);
                     }
                   }
                 }}
@@ -1087,12 +1094,15 @@ export default function PlayerScreen() {
                   onRecording={async () => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                     if (deviceRecording.isRecording) {
+                      const capturedBytes = deviceRecording.bytesWritten;
+                      const capturedMs = deviceRecording.elapsedMs;
+                      setShowToolbar(false);
                       const saved = await deviceRecording.stop();
                       Alert.alert(
-                        "Recording saved",
+                        saved ? "Enregistrement sauvegardé ✓" : "Enregistrement arrêté",
                         saved
-                          ? `File saved to:\n${saved}\n\n${formatBytes(deviceRecording.bytesWritten)} captured`
-                          : "Recording stopped.",
+                          ? `Sauvegardé dans la galerie\n"IPTV Recordings"\n\n${formatElapsed(capturedMs)} · ${formatBytes(capturedBytes)} capturés`
+                          : "L'enregistrement a été arrêté.",
                         [{ text: "OK" }],
                       );
                     } else {
@@ -1102,10 +1112,10 @@ export default function PlayerScreen() {
                         recordingSettings.deviceRecordingsFolder ?? "",
                       );
                       if (!started && deviceRecording.error) {
-                        Alert.alert("Cannot record", deviceRecording.error);
+                        Alert.alert("Impossible d'enregistrer", deviceRecording.error);
                       }
+                      setShowToolbar(false);
                     }
-                    setShowToolbar(false);
                   }}
                   isRecording={deviceRecording.isRecording}
                   sleepActive={sleepActiveMinutes > 0}

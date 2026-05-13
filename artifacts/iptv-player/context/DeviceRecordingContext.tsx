@@ -1,9 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
+import * as MediaLibrary from "expo-media-library";
 import { Platform } from "react-native";
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/recordings`
+  : "http://localhost:8080/api/recordings";
 
 export interface DeviceRecordingState {
   isRecording: boolean;
+  isSaving: boolean;
   channelName: string | null;
   filePath: string | null;
   fileName: string | null;
@@ -21,6 +27,7 @@ interface DeviceRecordingContextValue extends DeviceRecordingState {
 
 const INITIAL: DeviceRecordingState = {
   isRecording: false,
+  isSaving: false,
   channelName: null,
   filePath: null,
   fileName: null,
@@ -37,14 +44,22 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
   const downloadRef = useRef<FileSystem.DownloadResumable | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const filePathRef = useRef<string | null>(null);
+  const bytesRef = useRef<number>(0);
 
   const start = useCallback(async (
     streamUrl: string,
     name: string,
-    deviceFolder: string,
+    _deviceFolder: string,
   ): Promise<boolean> => {
     if (Platform.OS === "web") {
-      setState((s) => ({ ...s, error: "Device recording is not available in web mode. Use server recording instead." }));
+      setState((s) => ({ ...s, error: "L'enregistrement n'est disponible que dans l'application mobile (Expo Go)." }));
+      return false;
+    }
+
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== "granted") {
+      setState((s) => ({ ...s, error: "Permission requise pour enregistrer dans la galerie photo." }));
       return false;
     }
 
@@ -65,28 +80,33 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       const safeName = name.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40);
       const fileName = `${dateStr}_${timeStr}_${safeName}.ts`;
 
-      const folder = deviceFolder
-        ? (deviceFolder.endsWith("/") ? deviceFolder : deviceFolder + "/")
-        : ((FileSystem.documentDirectory ?? "") + "recordings/");
+      const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? "";
+      const recDir = cacheDir + "recordings/";
+      try { await FileSystem.makeDirectoryAsync(recDir, { intermediates: true }); } catch {}
+      const filePath = recDir + fileName;
 
-      try { await FileSystem.makeDirectoryAsync(folder, { intermediates: true }); } catch {}
+      filePathRef.current = filePath;
+      bytesRef.current = 0;
 
-      const filePath = folder + fileName;
-      const now = Date.now();
-      startTimeRef.current = now;
+      const pipeUrl = `${API_BASE}/pipe?url=${encodeURIComponent(streamUrl)}`;
 
       const dl = FileSystem.createDownloadResumable(
-        streamUrl,
+        pipeUrl,
         filePath,
         {},
         (progress) => {
+          bytesRef.current = progress.totalBytesWritten;
           setState((s) => ({ ...s, bytesWritten: progress.totalBytesWritten }));
         },
       );
       downloadRef.current = dl;
 
+      const now = Date.now();
+      startTimeRef.current = now;
+
       setState({
         isRecording: true,
+        isSaving: false,
         channelName: name,
         filePath,
         fileName,
@@ -105,7 +125,7 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       dl.downloadAsync().catch(() => {});
       return true;
     } catch (e: any) {
-      setState((s) => ({ ...s, error: e?.message ?? "Failed to start recording" }));
+      setState((s) => ({ ...s, error: e?.message ?? "Impossible de démarrer l'enregistrement" }));
       return false;
     }
   }, []);
@@ -115,20 +135,52 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    startTimeRef.current = null;
 
-    let savedPath: string | null = null;
+    setState((s) => ({ ...s, isRecording: false, isSaving: true }));
+
     if (downloadRef.current) {
       try { await downloadRef.current.pauseAsync(); } catch {}
-      savedPath = state.filePath;
       downloadRef.current = null;
-    } else {
-      savedPath = state.filePath;
     }
 
-    startTimeRef.current = null;
-    setState((s) => ({ ...s, isRecording: false }));
-    return savedPath;
-  }, [state.filePath]);
+    const filePath = filePathRef.current;
+    filePathRef.current = null;
+    let savedUri: string | null = null;
+
+    if (filePath) {
+      try {
+        const info = await FileSystem.getInfoAsync(filePath);
+        if (info.exists && (info as any).size > 0) {
+          const asset = await MediaLibrary.createAssetAsync(filePath);
+          try {
+            let album = await MediaLibrary.getAlbumAsync("IPTV Recordings");
+            if (!album) {
+              album = await MediaLibrary.createAlbumAsync("IPTV Recordings", asset, false);
+            } else {
+              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            }
+          } catch {}
+          savedUri = asset.uri;
+        }
+      } catch (e: any) {
+        setState((s) => ({ ...s, isSaving: false, error: e?.message ?? "Impossible de sauvegarder l'enregistrement" }));
+        return null;
+      } finally {
+        try { await FileSystem.deleteAsync(filePath, { idempotent: true }); } catch {}
+      }
+    }
+
+    setState((s) => ({
+      ...s,
+      isSaving: false,
+      filePath: null,
+      fileName: null,
+      bytesWritten: 0,
+      elapsedMs: 0,
+    }));
+    return savedUri;
+  }, []);
 
   const clearError = useCallback(() => {
     setState((s) => ({ ...s, error: null }));

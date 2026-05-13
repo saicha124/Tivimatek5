@@ -183,4 +183,50 @@ router.get("/recordings/download/:id", (req, res) => {
   fs.createReadStream(rec.outputPath).pipe(res);
 });
 
+// GET /api/recordings/pipe?url=<encoded_stream_url>
+// Pipes any stream through ffmpeg (converting to MPEG-TS) directly to the HTTP response.
+// The mobile client uses expo-file-system DownloadResumable to write this to disk in real-time.
+// When the client pauses/aborts the download, req "close" fires and ffmpeg is killed.
+router.get("/recordings/pipe", (req, res) => {
+  const rawUrl = req.query["url"];
+  if (!rawUrl || typeof rawUrl !== "string") {
+    res.status(400).json({ error: "url query parameter is required" });
+    return;
+  }
+
+  let streamUrl: string;
+  try {
+    streamUrl = decodeURIComponent(rawUrl);
+  } catch {
+    res.status(400).json({ error: "Invalid url encoding" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "video/mp2t");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  const proc = spawn("ffmpeg", [
+    "-loglevel", "warning",
+    "-i", streamUrl,
+    "-c", "copy",
+    "-f", "mpegts",
+    "pipe:1",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+
+  proc.stdout?.pipe(res);
+
+  req.on("close", () => {
+    if (proc.exitCode === null) {
+      proc.kill("SIGTERM");
+      logger.info({ url: streamUrl.slice(0, 80) }, "Pipe recording stopped by client");
+    }
+  });
+
+  proc.on("exit", (code, signal) => {
+    logger.info({ code, signal }, "Pipe ffmpeg exited");
+    if (!res.writableEnded) res.end();
+  });
+});
+
 export default router;
