@@ -227,41 +227,30 @@ export function PlayerInfoBar({
               style={styles.actionTile}
               onPress={() => {
                 if (isLongPressed) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                   setLongPressedId(null);
+                  onDeleteHistoryItem?.(h.channelId);
                   return;
                 }
-                if (!isCurrent) {
-                  Haptics.selectionAsync();
-                  onSwitchChannel(h);
-                }
+                Haptics.selectionAsync();
+                onSwitchChannel(h);
               }}
               onLongPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setLongPressedId(isLongPressed ? null : h.channelId);
               }}
               delayLongPress={400}
+              activeOpacity={0.75}
             >
               <View
                 style={[
                   styles.tileIcon,
                   { backgroundColor: "rgba(255,255,255,0.07)" },
-                  isCurrent && { borderColor: colors.primary, borderWidth: 2 },
-                  isLongPressed && { backgroundColor: "rgba(244,67,54,0.18)", borderColor: "#f44336", borderWidth: 1.5 },
+                  isCurrent && !isLongPressed && { borderColor: colors.primary, borderWidth: 2 },
+                  isLongPressed && { borderColor: "#f44336", borderWidth: 1.5 },
                 ]}
               >
-                {isLongPressed ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                      setLongPressedId(null);
-                      onDeleteHistoryItem?.(h.channelId);
-                    }}
-                    style={styles.deleteOverlay}
-                  >
-                    <Feather name="trash-2" size={20} color="#f44336" />
-                    <Text style={styles.deleteLabel}>Supprimer</Text>
-                  </TouchableOpacity>
-                ) : h.channelLogo ? (
+                {h.channelLogo ? (
                   <Image
                     source={{ uri: h.channelLogo }}
                     style={styles.tileLogo}
@@ -270,8 +259,17 @@ export function PlayerInfoBar({
                 ) : (
                   <Feather name="tv" size={20} color="rgba(255,255,255,0.35)" />
                 )}
+                {isLongPressed && (
+                  <View style={styles.deleteOverlay}>
+                    <Feather name="trash-2" size={18} color="#fff" />
+                  </View>
+                )}
               </View>
-              {!isLongPressed && (
+              {isLongPressed ? (
+                <View style={styles.supprimerBadge}>
+                  <Text style={styles.supprimerText}>Supprimer</Text>
+                </View>
+              ) : (
                 <Text style={styles.tileLabel} numberOfLines={2}>
                   {h.channelName}
                 </Text>
@@ -510,16 +508,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   deleteOverlay: {
-    width: "100%",
-    height: "100%",
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(244,67,54,0.55)",
     justifyContent: "center",
     alignItems: "center",
-    gap: 3,
+    borderRadius: 8,
   },
-  deleteLabel: {
-    color: "#f44336",
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
+  supprimerBadge: {
+    backgroundColor: "#fff",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  supprimerText: {
+    color: "#111",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
     textAlign: "center",
   },
 });
