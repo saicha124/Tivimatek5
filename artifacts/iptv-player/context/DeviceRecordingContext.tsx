@@ -39,18 +39,21 @@ const INITIAL: DeviceRecordingState = {
 
 const DeviceRecordingContext = createContext<DeviceRecordingContextValue | null>(null);
 
+const DEFAULT_FOLDER = "/storage/emulated/0/Download/IPTV Recordings";
+
 export function DeviceRecordingProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DeviceRecordingState>(INITIAL);
   const downloadRef = useRef<FileSystem.DownloadResumable | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
-  const filePathRef = useRef<string | null>(null);
-  const bytesRef = useRef<number>(0);
+  const cacheFilePathRef = useRef<string | null>(null);
+  const fileNameRef = useRef<string | null>(null);
+  const deviceFolderRef = useRef<string>(DEFAULT_FOLDER);
 
   const start = useCallback(async (
     streamUrl: string,
     name: string,
-    _deviceFolder: string,
+    deviceFolder: string,
   ): Promise<boolean> => {
     if (Platform.OS === "web") {
       setState((s) => ({ ...s, error: "L'enregistrement n'est disponible que dans l'application mobile (Expo Go)." }));
@@ -59,7 +62,7 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
 
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== "granted") {
-      setState((s) => ({ ...s, error: "Permission requise pour enregistrer dans la galerie photo." }));
+      setState((s) => ({ ...s, error: "Permission requise pour accéder au stockage." }));
       return false;
     }
 
@@ -80,22 +83,21 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       const safeName = name.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40);
       const fileName = `${dateStr}_${timeStr}_${safeName}.ts`;
 
-      const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? "";
-      const recDir = cacheDir + "recordings/";
-      try { await FileSystem.makeDirectoryAsync(recDir, { intermediates: true }); } catch {}
-      const filePath = recDir + fileName;
+      fileNameRef.current = fileName;
+      deviceFolderRef.current = deviceFolder?.trim() || DEFAULT_FOLDER;
 
-      filePathRef.current = filePath;
-      bytesRef.current = 0;
+      const cacheDir = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? "") + "rec_tmp/";
+      try { await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true }); } catch {}
+      const cachePath = cacheDir + fileName;
+      cacheFilePathRef.current = cachePath;
 
       const pipeUrl = `${API_BASE}/pipe?url=${encodeURIComponent(streamUrl)}`;
 
       const dl = FileSystem.createDownloadResumable(
         pipeUrl,
-        filePath,
+        cachePath,
         {},
         (progress) => {
-          bytesRef.current = progress.totalBytesWritten;
           setState((s) => ({ ...s, bytesWritten: progress.totalBytesWritten }));
         },
       );
@@ -108,7 +110,7 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
         isRecording: true,
         isSaving: false,
         channelName: name,
-        filePath,
+        filePath: cachePath,
         fileName,
         bytesWritten: 0,
         elapsedMs: 0,
@@ -136,7 +138,6 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       timerRef.current = null;
     }
     startTimeRef.current = null;
-
     setState((s) => ({ ...s, isRecording: false, isSaving: true }));
 
     if (downloadRef.current) {
@@ -144,15 +145,39 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
       downloadRef.current = null;
     }
 
-    const filePath = filePathRef.current;
-    filePathRef.current = null;
+    const cachePath = cacheFilePathRef.current;
+    const fileName = fileNameRef.current;
+    const targetFolder = deviceFolderRef.current;
+    cacheFilePathRef.current = null;
+    fileNameRef.current = null;
+
     let savedUri: string | null = null;
 
-    if (filePath) {
+    if (cachePath && fileName) {
       try {
-        const info = await FileSystem.getInfoAsync(filePath);
-        if (info.exists && (info as any).size > 0) {
-          const asset = await MediaLibrary.createAssetAsync(filePath);
+        const info = await FileSystem.getInfoAsync(cachePath);
+        if (!info.exists || (info as any).size === 0) {
+          setState((s) => ({ ...s, isSaving: false, error: "Le fichier est vide — le flux n'a peut-être pas démarré." }));
+          return null;
+        }
+
+        let saved = false;
+
+        if (Platform.OS === "android" && targetFolder) {
+          try {
+            const folderUri = "file://" + (targetFolder.endsWith("/") ? targetFolder : targetFolder + "/");
+            await FileSystem.makeDirectoryAsync(folderUri, { intermediates: true });
+            const destUri = folderUri + fileName;
+            await FileSystem.copyAsync({ from: cachePath, to: destUri });
+            savedUri = destUri;
+            saved = true;
+          } catch {
+            saved = false;
+          }
+        }
+
+        if (!saved) {
+          const asset = await MediaLibrary.createAssetAsync(cachePath);
           try {
             let album = await MediaLibrary.getAlbumAsync("IPTV Recordings");
             if (!album) {
@@ -167,7 +192,7 @@ export function DeviceRecordingProvider({ children }: { children: React.ReactNod
         setState((s) => ({ ...s, isSaving: false, error: e?.message ?? "Impossible de sauvegarder l'enregistrement" }));
         return null;
       } finally {
-        try { await FileSystem.deleteAsync(filePath, { idempotent: true }); } catch {}
+        try { await FileSystem.deleteAsync(cachePath, { idempotent: true }); } catch {}
       }
     }
 

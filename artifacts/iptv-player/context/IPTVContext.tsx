@@ -86,7 +86,7 @@ export interface RecordingSettings {
 
 export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   recordingsFolder: "/storage/emulated/0/Download/TiviMate/Recordings",
-  deviceRecordingsFolder: "",
+  deviceRecordingsFolder: "/storage/emulated/0/Download/IPTV Recordings",
   startBeforeMinutes: 0,
   stopAfterMinutes: 0,
 };

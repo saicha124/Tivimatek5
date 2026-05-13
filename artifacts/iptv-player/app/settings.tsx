@@ -257,7 +257,9 @@ export default function SettingsScreen() {
   const [serverTotalMB, setServerTotalMB] = useState(0);
 
   const [deviceFolderEditing, setDeviceFolderEditing] = useState(false);
-  const [deviceFolderDraft, setDeviceFolderDraft] = useState(recordingSettings.deviceRecordingsFolder ?? "");
+  const [deviceFolderDraft, setDeviceFolderDraft] = useState(
+    recordingSettings.deviceRecordingsFolder ?? "/storage/emulated/0/Download/IPTV Recordings"
+  );
   const deviceFolderInputRef = useRef<any>(null);
 
   const [proxyUrlDraft, setProxyUrlDraft] = useState(customProxyUrl);
@@ -930,14 +932,15 @@ export default function SettingsScreen() {
     };
 
     const deviceFolderPresets = [
-      { label: "App Documents / recordings", value: "" },
+      { label: "Download / IPTV Recordings (défaut)", value: "/storage/emulated/0/Download/IPTV Recordings" },
+      { label: "Download / IPTV (Android)", value: "/storage/emulated/0/Download/IPTV" },
       { label: "Movies / IPTV (Android)", value: "/storage/emulated/0/Movies/IPTV" },
-      { label: "Downloads / IPTV (Android)", value: "/storage/emulated/0/Download/IPTV" },
+      { label: "Galerie photo (IPTV Recordings)", value: "" },
     ];
 
     const effectiveDeviceFolder = recordingSettings.deviceRecordingsFolder?.trim()
       ? recordingSettings.deviceRecordingsFolder.trim()
-      : "App Documents / recordings (default)";
+      : "/storage/emulated/0/Download/IPTV Recordings";
 
     return (
       <ScrollView contentContainerStyle={{ paddingBottom: bottomPad + 24 }}>
@@ -967,7 +970,7 @@ export default function SettingsScreen() {
                   autoFocus
                   autoCapitalize="none"
                   autoCorrect={false}
-                  placeholder="Leave empty for App Documents"
+                  placeholder="/storage/emulated/0/Download/IPTV Recordings"
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   style={{
                     fontSize: 12,
@@ -990,7 +993,7 @@ export default function SettingsScreen() {
                 if (deviceFolderEditing) {
                   saveDeviceFolderDraft();
                 } else {
-                  setDeviceFolderDraft(recordingSettings.deviceRecordingsFolder ?? "");
+                  setDeviceFolderDraft(recordingSettings.deviceRecordingsFolder ?? "/storage/emulated/0/Download/IPTV Recordings");
                   setDeviceFolderEditing(true);
                 }
               }}
@@ -1044,7 +1047,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.footerNote, { color: "rgba(255,255,255,0.35)", marginBottom: 12 }]}>
-          Device recording saves the live stream directly to this folder as a .ts file while you watch. Tap ● in the player to start, tap again or tap the REC badge to stop.
+          L'enregistrement sauvegarde le flux directement dans ce dossier en tant que fichier .ts. Appuie sur ● dans le lecteur pour démarrer, rappuie ou appuie sur le badge REC pour arrêter. Le fichier apparaîtra dans ton gestionnaire de fichiers (Downloads → IPTV Recordings).
         </Text>
 
         {/* Server status card */}
