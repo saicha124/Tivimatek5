@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddPlaylistWizard } from "@/components/AddPlaylistWizard";
+import { FolderBrowserSheet } from "@/components/FolderBrowserSheet";
 import { GroupLockModal } from "@/components/GroupLockModal";
 import { PinPad } from "@/components/PinPad";
 import { Playlist, useIPTV } from "@/context/IPTVContext";
@@ -261,6 +262,7 @@ export default function SettingsScreen() {
     recordingSettings.deviceRecordingsFolder ?? "/storage/emulated/0/Download/IPTV Recordings"
   );
   const deviceFolderInputRef = useRef<any>(null);
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
   const [proxyUrlDraft, setProxyUrlDraft] = useState(customProxyUrl);
   const [proxyUrlEditing, setProxyUrlEditing] = useState(false);
@@ -943,6 +945,16 @@ export default function SettingsScreen() {
       : "/storage/emulated/0/Download/IPTV Recordings";
 
     return (
+      <React.Fragment>
+      <FolderBrowserSheet
+        visible={showFolderBrowser}
+        initialPath={recordingSettings.deviceRecordingsFolder ?? "/storage/emulated/0/Download/IPTV Recordings"}
+        onSelect={(path) => {
+          setDeviceFolderDraft(path);
+          updateRecordingSettings({ deviceRecordingsFolder: path });
+        }}
+        onClose={() => setShowFolderBrowser(false)}
+      />
       <ScrollView contentContainerStyle={{ paddingBottom: bottomPad + 24 }}>
 
         {/* Device recording card */}
@@ -988,6 +1000,19 @@ export default function SettingsScreen() {
                 </Text>
               )}
             </View>
+            {/* Browse button — opens the folder picker */}
+            {!deviceFolderEditing && (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowFolderBrowser(true);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ marginRight: 10 }}
+              >
+                <Feather name="folder" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => {
                 if (deviceFolderEditing) {
@@ -1197,6 +1222,7 @@ export default function SettingsScreen() {
           Minutes: 0 = record exactly as scheduled. Up to 60 min early start or late stop.
         </Text>
       </ScrollView>
+      </React.Fragment>
     );
   };
 
